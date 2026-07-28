@@ -13,6 +13,7 @@
 [MEGA QG NFCom](#-mega-qg-vivo-nfcom) •
 [MEGA QG NFSe](#-mega-qg-vivo-nfse) •
 [Instalação](#-instalação) •
+[Configuração de endpoints](#-configuração-de-endpoints-lgpd) •
 [Changelog](#-changelog)
 
 </div>
@@ -27,10 +28,23 @@ Cada "QG" é um app desktop (Tkinter, tema dark) que centraliza várias operaç�
 
 | QG | Documento fiscal | Status |
 |---|---|---|
-| [MEGA QG VIVO NFCom](#-mega-qg-vivo-nfcom) | Nota Fiscal de Comunicação | ✅ Em produção — v2.1 |
-| [MEGA QG VIVO NFSe](#-mega-qg-vivo-nfse) | Nota Fiscal de Serviço Eletrônica | ✅ v2.0 — mesma base do NFCom |
+| [MEGA QG VIVO NFCom](#-mega-qg-vivo-nfcom) | Nota Fiscal de Comunicação | ✅ Em produção — v2.2 |
+| [MEGA QG VIVO NFSe](#-mega-qg-vivo-nfse) | Nota Fiscal de Serviço Eletrônica | ✅ v2.1 — mesma base do NFCom |
 
 Além dos apps desktop, existe também uma **versão web (Flask) do QG NFCom** em desenvolvimento, pensada para rodar como serviço interno acessível pelo navegador em vez de exigir instalação local — veja [`/front-web`](./front-web) (em progresso).
+
+### Estrutura do repositório
+
+```
+qg.py                    # MEGA QG VIVO NFCom (desktop)
+qg_nfse.py                # MEGA QG VIVO NFSe (desktop)
+front-web/                 # Versão web (Flask) do QG NFCom -- em progresso
+config.example.json        # Template de endpoints -- copie para config.json e preencha
+.gitignore                 # Exclui config.json, logs, e saídas com dados pessoais
+requirements.txt
+```
+
+`config.json` (com as URLs reais) e a pasta `logs/` **não existem no repositório** — são gerados/preenchidos localmente por quem for rodar os apps. Cada app procura seu `config.json` na própria pasta onde está (raiz para `qg.py`/`qg_nfse.py`, dentro de `front-web/` para o app Flask). Veja [Configuração de endpoints](#-configuração-de-endpoints-lgpd).
 
 ---
 
@@ -97,7 +111,7 @@ Todos os módulos têm: barra de progresso, log de execução colorido por statu
 - **Paralelização adicionada em cima dos scripts originais**: os 4 scripts que deram origem a este QG (`Baixar_XMLs.py`, `baixarxmlcomsemcep.py`, `Reenviar_XML.py`, `Consulta_DPS.py`) rodavam sequencialmente; aqui cada um ganhou `ThreadPoolExecutor` com número de threads configurável — colocar `Threads = 1` reproduz o comportamento 100% serial original.
 - **Geração de planilha sem depender do Excel aberto**: o Relatório DPS sem Endereço usava automação COM do Excel no script original (`Excel.Application`); a versão do QG gera o `.xlsx` direto com `openpyxl`, mais rápido e sem precisar do Excel instalado/aberto por trás.
 - **Log adicionado onde não existia**: Download de XMLs, Download COM/SEM CEP e Consulta DPS originalmente só imprimiam no console — agora têm log opcional em arquivo com rastreabilidade completa (status + resposta de cada chamada), no mesmo padrão do NFCom.
-- **Endpoint próprio**: as chamadas HTTP do NFSe vão pra porta `30019` (vs. `30016` do NFCom) nos mesmos hosts internos — são serviços fiscais distintos na mesma infraestrutura.
+- **Endpoint próprio**: as chamadas HTTP do NFSe vão para um serviço fiscal distinto do NFCom na mesma infraestrutura interna (ver [Configuração de endpoints](#-configuração-de-endpoints-lgpd) — nenhuma URL real fica neste repositório).
 
 ### Estrutura
 
@@ -128,13 +142,48 @@ python qg.py         # QG de NFCom
 python qg_nfse.py     # QG de NFSe
 ```
 
-> Os apps fazem chamadas HTTP para hosts internos da Vivo (`svvivowor*`, `svvivohlnx*`). Rode numa máquina/rede com acesso a esses endereços — normalmente a mesma que já usava os scripts avulsos anteriores.
+> Os apps fazem chamadas HTTP para serviços fiscais internos da empresa. Rode numa máquina/rede com acesso a esses endereços, e configure os endpoints antes do primeiro uso — veja [Configuração de endpoints](#-configuração-de-endpoints-lgpd) logo abaixo.
+
+---
+
+## 🔒 Configuração de endpoints (LGPD)
+
+**Nenhuma URL, hostname ou porta de infraestrutura interna fica neste repositório.** Como é um projeto público no GitHub, expor os endereços dos serviços internos da empresa seria um risco de segurança desnecessário — então todos os endpoints (Consulta SEFAZ, Cancelamento, Download de XMLs, Reenvio à SEFAZ, Reenvio de WebHook, e os 4 endpoints do NFSe) são carregados em runtime, nunca hardcoded no código.
+
+### Como configurar
+
+**Opção 1 — arquivo de configuração local (recomendado):**
+
+```bash
+cp config.example.json config.json
+```
+
+Preencha as URLs reais no `config.json`. Esse arquivo já está no `.gitignore` — não tem risco de subir sem querer.
+
+**Opção 2 — variáveis de ambiente** (têm prioridade sobre o `config.json` se as duas existirem):
+
+```bash
+# Windows (cmd)
+set MEGAQG_CHECKSEFAZ_URL_PRD=http://seu-endpoint-interno/api/check-sefaz/
+python qg.py
+```
+
+Cada engine tem sua própria chave/variável — a lista completa está comentada dentro do `config.example.json` e no changelog abaixo. Sem nenhuma das duas configuradas, os apps abrem normalmente; cada operação avisa com uma mensagem clara (em vez de travar sem explicação) se você tentar rodá-la sem o endpoint correspondente preenchido.
+
+### Outros cuidados de LGPD no projeto
+
+- **Saídas com dados pessoais** (`.xlsx` do Relatório DPS sem Endereço, `.csv` expandido, XMLs baixados — que contêm CPF, nome e endereço de clientes) ficam de fora do Git pelo `.gitignore`. Evite versionar esse tipo de arquivo por engano.
+- **Logs de execução** (pasta `logs/`, incluindo os `.txt` gerados por cada módulo) também não são versionados — eles registram respostas de API que podem conter dados de clientes.
 
 ---
 
 ## 📝 Changelog
 
 ### NFCom
+
+**v2.2**
+- Segurança/LGPD: nenhuma URL/host interno fica mais no código-fonte. Endpoints agora são carregados de `config.json` (não versionado) ou variáveis de ambiente — veja [Configuração de endpoints](#-configuração-de-endpoints-lgpd).
+- Pasta de log padrão passou de um caminho fixo para `.\logs`, relativa ao próprio script.
 
 **v2.1**
 - Ambiente de Homologação (HML) adicionado em Consulta SEFAZ, Cancelamento de Notas e Reenvio de WebHook (Download de XMLs e Reenvio à SEFAZ já tinham).
@@ -146,6 +195,10 @@ python qg_nfse.py     # QG de NFSe
 
 ### NFSe
 
+**v2.1**
+- Segurança/LGPD: mesmo tratamento do NFCom v2.2 — nenhuma URL/host interno fica no código-fonte, endpoints via `config.json` ou variáveis de ambiente.
+- Pasta de log padrão passou de um caminho fixo para `.\logs`.
+
 **v2.0**
 - Central única reunindo 5 operações fiscais de NFSe (Download de XMLs com modo COM/SEM CEP, Relatório DPS sem Endereço, Expandir DPS no CSV, Reenvio de XML, Consulta DPS), na mesma base arquitetural do QG de NFCom.
 - Paralelização (`ThreadPoolExecutor`) adicionada em cima dos 4 scripts originais, que rodavam sequencialmente.
@@ -156,8 +209,8 @@ python qg_nfse.py     # QG de NFSe
 
 ## 🗺️ Roadmap
 
-- [ ] Ambientes PRD/HML no QG de NFSe (atualmente os 5 módulos usam URL fixa — o QG de NFCom já resolveu isso na v2.1, é candidato natural pra próxima leva de melhorias)
-- [ ] Confirmar com o time de infra os hosts reais de Homologação adicionados na v2.1 do NFCom (Consulta SEFAZ, Cancelamento, Reenvio de WebHook — atualmente seguem o mesmo padrão de host de módulos já existentes, mas não foram validados contra a infraestrutura real)
+- [ ] Ambientes PRD/HML no QG de NFSe (atualmente os 5 módulos usam um único endpoint — o QG de NFCom já resolveu isso na v2.1, é candidato natural pra próxima leva de melhorias)
+- [ ] Confirmar com o time de infra os valores corretos dos 3 endpoints de Homologação adicionados na v2.1 do NFCom (Consulta SEFAZ, Cancelamento, Reenvio de WebHook) antes de configurá-los em `config.json` — não foram validados contra a infraestrutura real
 - [ ] Finalizar a versão web (Flask) do QG NFCom como alternativa ao app desktop
 
 ---
