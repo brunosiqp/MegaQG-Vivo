@@ -1,0 +1,6 @@
+pyodbc
+pandas
+xlsxwriter
+colorama
+requests
+openpyxl

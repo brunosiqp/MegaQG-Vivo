@@ -1,0 +1,25 @@
+# Credenciais (nunca versionar)
+credenciais.ini
+*.env
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# PyInstaller
+build/
+dist/
+
+# Saídas locais
+*.log
+*.csv
+*.xlsx
+
+# Configuração com endpoints e senha (nunca versionar)
+config.json
+
+# Cópia local dos QGs originais (têm endereços internos no código)
+legado/
