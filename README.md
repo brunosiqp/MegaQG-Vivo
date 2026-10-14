@@ -2,18 +2,19 @@
 
 # ⚡ MEGA QG VIVO — Central de Operações Fiscais
 
-**Automação em lote das operações fiscais da Vivo: NFCom e NFSe num só lugar.**
+**Automação em lote das operações fiscais da Vivo: NFCom, NFSe, NFCe e relatórios num só app.**
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Tkinter](https://img.shields.io/badge/GUI-Tkinter-2dd4bf)
-![Status](https://img.shields.io/badge/status-em%20produção-33d17a)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-v3.9-7c3aed)
+![Status](https://img.shields.io/badge/status-em%20produ%C3%A7%C3%A3o-33d17a)
 ![License](https://img.shields.io/badge/license-privado%20%2F%20interno-8890a6)
 
 [Visão geral](#-visão-geral) •
-[MEGA QG NFCom](#-mega-qg-vivo-nfcom) •
-[MEGA QG NFSe](#-mega-qg-vivo-nfse) •
-[Instalação](#-instalação) •
-[Configuração de endpoints](#-configuração-de-endpoints-lgpd) •
+[Operações](#-operações) •
+[Interface](#-interface) •
+[Arquitetura](#️-arquitetura) •
+[LGPD e segurança](#-lgpd-e-segurança) •
 [Changelog](#-changelog)
 
 </div>
@@ -22,201 +23,191 @@
 
 ## 📌 Visão geral
 
-Este repositório reúne as ferramentas internas de automação fiscal da Vivo, criadas para tirar do manual (e do erro humano) operações repetitivas de alto volume feitas contra os ambientes de SEFAZ, WebHooks e integrações fiscais internas.
+O MegaQG Vivo reúne as ferramentas internas de automação fiscal da Vivo, criadas para tirar do manual (e do erro
+humano) operações repetitivas de alto volume feitas contra a SEFAZ, prefeituras, WebHooks e integrações fiscais
+internas.
 
-Cada "QG" é um app desktop (Tkinter, tema dark) que centraliza várias operações que antes eram scripts avulsos (`main.py`, `Itgr.py`, `CancelamentoMassivoNFCom_v2.2.0.py`, etc.) rodados um a um, sem interface, sem progresso visual e sem log padronizado.
+Até a v2.x eram dois apps separados (**MEGA QG VIVO NFCom** e **MEGA QG VIVO NFSe**). A partir da **v3.0** eles
+viraram um app desktop único, o **MegaQG Vivo**, com hub, barra lateral, ambiente Produção/Homologação global e
+novas áreas (NFCe e Relatórios).
 
-| QG | Documento fiscal | Status |
+| Área | Operações | Desde |
 |---|---|---|
-| [MEGA QG VIVO NFCom](#-mega-qg-vivo-nfcom) | Nota Fiscal de Comunicação | ✅ Em produção — v2.2 |
-| [MEGA QG VIVO NFSe](#-mega-qg-vivo-nfse) | Nota Fiscal de Serviço Eletrônica | ✅ v2.1 — mesma base do NFCom |
+| NFCom | 5 | v2.0 (app único desde v3.0) |
+| NFSe | 6 | v2.0 (app único desde v3.0) |
+| NFCe | 3 | v3.2 |
+| Relatórios | 1 | v3.0 |
 
-Além dos apps desktop, existe também uma **versão web (Flask) do QG NFCom** em desenvolvimento, pensada para rodar como serviço interno acessível pelo navegador em vez de exigir instalação local — veja [`/front-web`](./front-web) (em progresso).
+### O que há neste repositório
 
-### Estrutura do repositório
+Este é o repositório **público e sanitizado** do projeto: documentação e versões antigas compiladas. O código-fonte
+atual e o executável v3.x ficam em repositório privado, porque o executável é distribuído com a configuração da rede
+interna e só circula dentro da empresa.
 
 ```
-qg.py                    # MEGA QG VIVO NFCom (desktop)
-qg_nfse.py                # MEGA QG VIVO NFSe (desktop)
-front-web/                 # Versão web (Flask) do QG NFCom -- em progresso
-config.example.json        # Template de endpoints -- copie para config.json e preencha
-.gitignore                 # Exclui config.json, logs, e saídas com dados pessoais
-requirements.txt
+README.md                    # esta documentação (v3.9)
+Vivo MegaQG (NFCom).exe      # legado: QG NFCom v2.2, app separado
+Vivo MegaQG (NFSe).exe       # legado: QG NFSe v2.1, app separado
+vivo.ico                     # ícone
 ```
-
-`config.json` (com as URLs reais) e a pasta `logs/` **não existem no repositório** — são gerados/preenchidos localmente por quem for rodar os apps. Cada app procura seu `config.json` na própria pasta onde está (raiz para `qg.py`/`qg_nfse.py`, dentro de `front-web/` para o app Flask). Veja [Configuração de endpoints](#-configuração-de-endpoints-lgpd).
 
 ---
 
-## 🧾 MEGA QG VIVO NFCOM
+## 🧾 Operações
 
-App único reunindo 5 operações fiscais de NFCom que antes eram scripts separados.
+### NFCom
 
-### Módulos
-
-| Módulo | O que faz |
+| Operação | O que faz |
 |---|---|
-| 🔎 **Consulta SEFAZ** | Verifica em lote o status de processamento de chaves NFCom, dividindo automaticamente entre os grupos **SVRS** (fila compartilhada) e **MG / MS / MT** (UFs com SEFAZ própria), cada um com seu próprio ritmo de envio e pausas obrigatórias. |
-| 🛑 **Cancelamento de Notas** | Dispara eventos de cancelamento (`110111`) em lote a partir de uma lista de chaves, com **modal de confirmação obrigatória** antes de qualquer requisição — ação irreversível junto ao SEFAZ. |
-| 📥 **Download de XMLs** | Baixa em lote os XMLs de notas NFCom a partir de uma lista de IDs, salvando localmente e registrando falhas num `.txt` separado para reprocessamento. |
-| 🔁 **Reenvio à SEFAZ** | Reenvia XMLs de uma pasta local para o ambiente de Produção ou Homologação, extraindo `chNFCom` e UF diretamente do XML. |
-| 🔔 **Reenvio de WebHook** | Cria (opcional) e reenvia webhooks por subscrição a partir de uma lista de IDs, com relatório de quantos eventos foram efetivamente reenviados. |
+| 🔎 **Consulta SEFAZ** | Verifica em lote o status de chaves NFCom, separando **SVRS** (fila compartilhada) e **MG / MS / MT** (SEFAZ própria), cada grupo com seu ritmo e pausas, e ETA em tempo real. Desde a v3.8, as chaves que voltam **HTTP 422** têm o ID localizado no banco e são reenviadas automaticamente em lotes de até 100, com o código HTTP de cada lote no log. |
+| 🛑 **Cancelamento de Notas** | Dispara eventos de cancelamento (`110111`) em lote, com **confirmação obrigatória** mostrando o ambiente antes de qualquer requisição. |
+| 📥 **Download de XMLs** | Baixa XMLs em lote a partir de uma lista de IDs, registrando as falhas para reprocessamento. |
+| 🔁 **Reenvio à SEFAZ** | Reenvia XMLs de uma pasta. Desde a v3.4, o XML do qual não dá para extrair a chave não é mais ignorado: o nome do arquivo (ID do documento) é reenviado pela API de reenvio por ID. |
+| 🔔 **Reenvio de WebHook** | Cria (opcional) e reenvia webhooks por subscrição, com relatório de quantos eventos foram reenviados. |
 
-Todos os módulos têm: barra de progresso, log de execução colorido por status (`OK` / `INFO` / `WARN` / `ERROR`), contadores em tempo real, gravação de log em arquivo, e botão de **Parar** (interrompe respeitando requisições já em voo).
+### NFSe
 
-### Destaques técnicos
-
-- **Arquitetura de página única (Tk)**: um container troca "páginas" via `tkraise()` — sem abrir janelas novas, sem travar a UI.
-- **Engine ↔ GUI desacoplada**: cada operação roda numa `Thread` própria com `ThreadPoolExecutor` internamente, e conversa com a interface só através de uma `queue.Queue` consumida via `widget.after()`. Isso significa que a lógica de negócio (as classes `*Engine`) não depende do Tkinter — dá pra reusar em outro front (é exatamente o que a versão web faz).
-- **Consulta SEFAZ com controle de fila por grupo**: SVRS processa em lotes de 2 chaves a cada 3s; MG/MS/MT processam em lotes de 30 chaves a cada 2 minutos (ver [Changelog](#-changelog) — limite ajustado na v2.1).
-- **ETA em tempo real**: o card de resumo da Consulta SEFAZ mostra o tempo estimado de conclusão, recalculado a cada lote processado com base no throughput real observado (não é uma estimativa fixa).
-- **Ambientes PRD/HML**: todos os 5 módulos suportam Produção e Homologação, com a URL correspondente escolhida automaticamente.
-
-### Estrutura
-
-```
-qg.py                  # App completo: engines + páginas + tema dark, tudo num arquivo
-```
-
-### Como rodar
-
-```bash
-pip install requests
-python qg.py
-```
-
-Sem dependências além do `requests` — Tkinter já vem com o Python padrão.
-
----
-
-## 🧾 MEGA QG VIVO NFSE
-
-App único reunindo 5 operações fiscais de NFSe, construído na mesma base arquitetural do QG de NFCom — mesmo padrão de engine (`Queue` + `ThreadPoolExecutor` + tema dark), com cor de assinatura própria (ciano) pra diferenciar visualmente dos dois QGs.
-
-### Módulos
-
-| Módulo | O que faz |
+| Operação | O que faz |
 |---|---|
-| 📥 **Download de XMLs** | Baixa XMLs em lote por lista de IDs. Tem 2 modos, escolhidos por rádio: **lote simples** (salva tudo direto na pasta de destino) ou **separar por endereço** (cria automaticamente as subpastas `COM CEP` / `SEM CEP`, verificando se `toma/end` e `dest/end` têm CEP, logradouro, número e bairro preenchidos no XML). |
-| 📊 **Relatório DPS sem Endereço** | Lê os XMLs de uma pasta (tipicamente a saída "SEM CEP" do módulo acima), extrai `nDPS` + nome/CPF do tomador, agrupa por cliente (juntando as DPS repetidas separadas por vírgula) e gera uma planilha `.xlsx` com 2 abas: os dados encontrados + uma aba em branco pronta pro preenchimento manual do endereço. |
-| 🧩 **Expandir DPS no CSV** | Pega um CSV — normalmente a planilha do módulo acima já preenchida com o endereço — onde uma coluna tem vários valores separados por vírgula, e "explode" em uma linha por valor, duplicando as demais colunas. Delimitador, nome da coluna e codificação de entrada (Windows-1252, UTF-8, UTF-8 com BOM) configuráveis na tela. |
-| 🔁 **Reenvio de XML** | Reenvia em lote os XMLs de uma pasta local para o endpoint de processamento, salvando a lista dos que falharem em `xml_com_erro_nfse.txt` para reprocessamento. |
-| 🔍 **Consulta DPS** | Consulta em lote o status de processamento de identificadores DPS junto à prefeitura, com log de status HTTP + resposta de cada consulta. |
+| 📥 **Download de XMLs** | Lote simples ou **separado por endereço** (subpastas `COM CEP` / `SEM CEP`). |
+| 📊 **Relatório DPS sem Endereço** | Gera `.xlsx` com **uma linha por DPS** (XMLs repetidos da mesma DPS viram uma linha só) e uma aba pronta para o preenchimento do endereço. Nome padrão `Planilha -dd-mm-aaaa.xlsx`. |
+| 🧩 **Expandir DPS no CSV** | "Explode" uma coluna com valores separados por vírgula em uma linha por valor; delimitador, coluna e codificação configuráveis. |
+| 🔁 **Reenvio de XML** | Reenvia XMLs de uma pasta, guardando a lista dos que falharem. |
+| 🔍 **Consulta DPS** | Consulta em lote o status de DPS junto à prefeitura. |
+| 🛠️ **Correção de XMLs (QG XML)** | Novo na v3.5. Oito correções em lote, cada uma desligável: caracteres corrompidos, número do endereço, `cMun` pelo CEP, `cLocEmi`, `cLocPrestacao`, PIS/COFINS (com arredondamento fiscal), alíquota de ISS e competência. A pasta de entrada nunca é alterada; só as notas corrigidas são gravadas e as que precisam de ajuste manual vão para pastas separadas. CEP resolvido por APIs públicas (ViaCEP, BrasilAPI, OpenCEP, AwesomeAPI) e confirmado no IBGE. |
 
-Todos os módulos têm: barra de progresso, log de execução colorido por status, contadores em tempo real, gravação de log em arquivo, e botão de **Parar**.
+### NFCe
 
-### Destaques técnicos
+| Operação | O que faz |
+|---|---|
+| ↩️ **Retorno de Contingência** | Piloto. Autorizada ou Rejeitada, escolhida na tela. Prévia somente leitura, **simulação com ROLLBACK**, confirmação e gravação em blocos de 1.000 com uma transação por bloco. |
+| 📥 **Download de XMLs** | Download em massa por chave de acesso. |
+| ♻️ **Reprocessamento** | Baixa o XML por chave, marca a nota para reprocessamento e reenvia o XML completo. Prévia, simulação, confirmação e log de HTTP e `cStat` por nota. |
 
-- **Mesma arquitetura do NFCom**: página única via `tkraise()`, engines desacopladas da GUI via `Queue` + `Thread`/`ThreadPoolExecutor`, tema dark idêntico na estrutura (cards em `Canvas`, cor de assinatura própria — ciano `#22d3ee`).
-- **Paralelização adicionada em cima dos scripts originais**: os 4 scripts que deram origem a este QG (`Baixar_XMLs.py`, `baixarxmlcomsemcep.py`, `Reenviar_XML.py`, `Consulta_DPS.py`) rodavam sequencialmente; aqui cada um ganhou `ThreadPoolExecutor` com número de threads configurável — colocar `Threads = 1` reproduz o comportamento 100% serial original.
-- **Geração de planilha sem depender do Excel aberto**: o Relatório DPS sem Endereço usava automação COM do Excel no script original (`Excel.Application`); a versão do QG gera o `.xlsx` direto com `openpyxl`, mais rápido e sem precisar do Excel instalado/aberto por trás.
-- **Log adicionado onde não existia**: Download de XMLs, Download COM/SEM CEP e Consulta DPS originalmente só imprimiam no console — agora têm log opcional em arquivo com rastreabilidade completa (status + resposta de cada chamada), no mesmo padrão do NFCom.
-- **Endpoint próprio**: as chamadas HTTP do NFSe vão para um serviço fiscal distinto do NFCom na mesma infraestrutura interna (ver [Configuração de endpoints](#-configuração-de-endpoints-lgpd) — nenhuma URL real fica neste repositório).
+### Relatórios
 
-### Estrutura
+| Operação | O que faz |
+|---|---|
+| 📑 **Exportador de Relatório** | Por dia ou período único, todas as notas ou só canceladas, XML opcional. Também roda pelo terminal (`--cli`). |
 
-```
-qg_nfse.py             # App completo: engines + páginas + tema dark, mesmo padrão do qg.py
-```
-
-### Como rodar
-
-```bash
-pip install requests openpyxl
-python qg_nfse.py
-```
-
-O `openpyxl` só é necessário para o módulo **Relatório DPS sem Endereço** — os outros 4 módulos rodam só com `requests`. Se abrir esse módulo sem a lib instalada, o app avisa com a mensagem de erro pedindo o `pip install openpyxl` em vez de travar sem explicação.
+Todas as operações têm barra de progresso, log colorido por status (`OK` / `INFO` / `WARN` / `ERROR`), contadores
+em tempo real, log em arquivo e botão **Parar** (que respeita as requisições já em voo).
 
 ---
 
-## ⚙️ Instalação
+## 🎨 Interface
 
-Pré-requisitos: **Python 3.10+** (recomendado 3.11+).
-
-```bash
-git clone <url-do-seu-repositório>
-cd <pasta-do-repositório>
-pip install -r requirements.txt   # ou: pip install requests openpyxl
-python qg.py         # QG de NFCom
-python qg_nfse.py     # QG de NFSe
-```
-
-> Os apps fazem chamadas HTTP para serviços fiscais internos da empresa. Rode numa máquina/rede com acesso a esses endereços, e configure os endpoints antes do primeiro uso — veja [Configuração de endpoints](#-configuração-de-endpoints-lgpd) logo abaixo.
+- **Hub** com as seções NFCom, NFSe, NFCe e Relatórios, busca de operação e cards que mostram o status
+  (Pronto / Configurar) e o que falta configurar. Grade responsiva de 3, 2 ou 1 coluna.
+- **Barra lateral** para trocar de operação sem voltar ao início; recolhe para só os ícones (Ctrl+B).
+- **Ambiente global** (Produção/Homologação) no topo, com indicador discreto na cor do ambiente. Não troca com uma
+  operação rodando.
+- **Temas**: 7 prontos (Nebulosa, Neon, Aurora, Violeta, Grafite, Clássico e Claro) e temas criados pelo usuário,
+  com editor de cores e prévia. A escolha fica nas preferências de cada usuário.
+- **Pokémon andando** no início: os 50 mais icônicos, com animações de andar, golpe e pulo em 8 direções, sempre
+  em volta do conteúdo e nunca por cima dos cards. Seguem o ponteiro, pulam quando clicados e se cumprimentam. O
+  clique é só observado, nunca consumido. Sprites do
+  [PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab) (CC BY-NC 4.0).
+- **Animações** leves: transições de cor, cards que entram em sequência, telas que deslizam, troca de tema com
+  esmaecimento. Nenhuma recalcula o layout.
+- **Visão para o cliente** (v3.9): para compartilhar a tela, troca a logo e o ícone pelos da Vivo e esconde todos
+  os Pokémon, na hora e sem perder nada preenchido.
+- **Movimento reduzido**: a opção "Animações e Pokémon" desliga transições e Pokémon.
+- **DPI awareness** para texto nítido em 125%/150%.
 
 ---
 
-## 🔒 Configuração de endpoints (LGPD)
+## 🏗️ Arquitetura
 
-**Nenhuma URL, hostname ou porta de infraestrutura interna fica neste repositório.** Como é um projeto público no GitHub, expor os endereços dos serviços internos da empresa seria um risco de segurança desnecessário — então todos os endpoints (Consulta SEFAZ, Cancelamento, Download de XMLs, Reenvio à SEFAZ, Reenvio de WebHook, e os 4 endpoints do NFSe) são carregados em runtime, nunca hardcoded no código.
-
-### Como configurar
-
-**Opção 1 — arquivo de configuração local (recomendado):**
-
-```bash
-cp config.example.json config.json
+```
+main.py           entrada (--cli: exportador no terminal; --autoteste: abre todas as telas)
+core/             configuração, preferências, banco, log, XML, versão
+ui/               temas, animações, Pokémon, widgets, hub e janela
+modulos/          uma pasta por operação: engine.py (lógica) + page.py (tela)
+  nfcom/  nfse/  nfce/  exportador_relatorio/
+tests/            testes sem VPN, com HTTP e banco simulados
+tools/            porte dos QGs originais, empacotamento, diagnóstico
 ```
 
-Preencha as URLs reais no `config.json`. Esse arquivo já está no `.gitignore` — não tem risco de subir sem querer.
+- **Engine ↔ GUI desacoplada**: cada operação roda numa `Thread` com `ThreadPoolExecutor` e fala com a tela só
+  por uma `queue.Queue` consumida via `widget.after()`. As engines não dependem do Tkinter.
+- **Porte sem alterar a lógica**: as operações dos QGs v2.x foram extraídas automaticamente dos apps originais;
+  só as que ganharam comportamento novo passaram a ser mantidas à mão.
+- **Registro único de operações**: hub, busca e barra lateral leem da mesma lista.
+- **Testes**: mais de 45 casos de engine com HTTP/banco simulados e um teste de interface que abre todas as telas
+  em todos os temas.
+- **Executável** gerado com PyInstaller.
 
-**Opção 2 — variáveis de ambiente** (têm prioridade sobre o `config.json` se as duas existirem):
+---
 
-```bash
-# Windows (cmd)
-set MEGAQG_CHECKSEFAZ_URL_PRD=http://seu-endpoint-interno/api/check-sefaz/
-python qg.py
-```
+## 🔒 LGPD e segurança
 
-Cada engine tem sua própria chave/variável — a lista completa está comentada dentro do `config.example.json` e no changelog abaixo. Sem nenhuma das duas configuradas, os apps abrem normalmente; cada operação avisa com uma mensagem clara (em vez de travar sem explicação) se você tentar rodá-la sem o endpoint correspondente preenchido.
-
-### Outros cuidados de LGPD no projeto
-
-- **Saídas com dados pessoais** (`.xlsx` do Relatório DPS sem Endereço, `.csv` expandido, XMLs baixados — que contêm CPF, nome e endereço de clientes) ficam de fora do Git pelo `.gitignore`. Evite versionar esse tipo de arquivo por engano.
-- **Logs de execução** (pasta `logs/`, incluindo os `.txt` gerados por cada módulo) também não são versionados — eles registram respostas de API que podem conter dados de clientes.
+- **Nenhuma URL, host, porta ou senha fica no código-fonte nem no git.** Tudo é carregado em runtime de um
+  `config.json` local (fora do versionamento) ou de variáveis de ambiente `MEGAQG_*`, que têm prioridade.
+- Cada commit passa por uma varredura de segredos antes de ser enviado.
+- Sem configuração, o app abre normalmente; cada card indica o que falta e a operação avisa em vez de travar.
+- O executável v3.x contém a configuração da rede interna e **não é distribuído fora da empresa**, por isso não
+  está neste repositório.
+- **Saídas com dados pessoais** (planilhas, CSVs e XMLs com CPF, nome e endereço de clientes) e **logs de
+  execução** (que registram respostas de API) nunca são versionados.
+- As únicas chamadas externas fixas no código são a serviços públicos (CEP, CNPJ e IBGE).
 
 ---
 
 ## 📝 Changelog
 
-### NFCom
+### MegaQG Vivo (app único)
 
-**v2.2**
-- Segurança/LGPD: nenhuma URL/host interno fica mais no código-fonte. Endpoints agora são carregados de `config.json` (não versionado) ou variáveis de ambiente — veja [Configuração de endpoints](#-configuração-de-endpoints-lgpd).
-- Pasta de log padrão passou de um caminho fixo para `.\logs`, relativa ao próprio script.
+**v3.9**
+- Visão para o cliente: logo e ícone da Vivo e nenhum Pokémon, para compartilhar a tela.
 
-**v2.1**
-- Ambiente de Homologação (HML) adicionado em Consulta SEFAZ, Cancelamento de Notas e Reenvio de WebHook (Download de XMLs e Reenvio à SEFAZ já tinham).
-- Consulta SEFAZ: limite de processamento de MG/MS/MT ajustado de 60 notas/5min para **30 notas/2min** (SVRS sem alteração).
-- Consulta SEFAZ: novo campo de **tempo estimado (ETA)** no card de resumo, atualizado em tempo real.
+**v3.8**
+- NFCom, Consulta SEFAZ: chaves com HTTP 422 são reenviadas automaticamente pelo ID, em lotes de até 100.
+  Novos contadores REENVIADAS e REENVIO C/ ERRO.
+- A opção "Animações e Pokémon" passa a valer acima da configuração do Windows (Área de Trabalho Remota não
+  desliga mais as animações).
 
-**v2.0**
-- Central única reunindo Consulta SEFAZ, Cancelamento, Download de XMLs, Reenvio à SEFAZ e Reenvio de WebHook num só app com tema dark.
+**v3.7**
+- 50 Pokémon com sprites animados em 8 direções, interações com o mouse e revezamento pelas laterais.
 
-### NFSe
+**v3.6**
+- Layout do início estável (os cards não "pulam" mais ao trocar de tema), grade responsiva e animações.
+- NFSe, Relatório DPS sem Endereço: uma linha por DPS e nome padrão com a data.
 
-**v2.1**
-- Segurança/LGPD: mesmo tratamento do NFCom v2.2 — nenhuma URL/host interno fica no código-fonte, endpoints via `config.json` ou variáveis de ambiente.
-- Pasta de log padrão passou de um caminho fixo para `.\logs`.
+**v3.5**
+- NFSe: nova operação Correção de XMLs (QG XML), com oito correções em lote.
 
-**v2.0**
-- Central única reunindo 5 operações fiscais de NFSe (Download de XMLs com modo COM/SEM CEP, Relatório DPS sem Endereço, Expandir DPS no CSV, Reenvio de XML, Consulta DPS), na mesma base arquitetural do QG de NFCom.
-- Paralelização (`ThreadPoolExecutor`) adicionada em cima dos 4 scripts originais, que rodavam sequencialmente.
-- Geração de planilha do Relatório DPS sem Endereço migrada de automação COM do Excel para `openpyxl`.
-- Log em arquivo adicionado aos módulos que originalmente só imprimiam no console (Download de XMLs, Download COM/SEM CEP, Consulta DPS).
+**v3.4**
+- NFCom, Reenvio à SEFAZ: XML sem chave legível é reenviado pelo ID do arquivo.
+- NFCe: Retorno de Contingência unificado, Download de XMLs e Reprocessamento por chave.
+- Temas (7 prontos + criados pelo usuário), barra lateral recolhível, rolagem pelo mouse em qualquer ponto.
 
----
+**v3.2**
+- NFCe (piloto): Retorno de Contingência, com prévia, simulação com ROLLBACK e gravação em blocos.
 
-## 🗺️ Roadmap
+**v3.1**
+- Acabamento de tema em todos os widgets, DPI awareness, telas com rolagem, pasta de log fixa.
 
-- [ ] Ambientes PRD/HML no QG de NFSe (atualmente os 5 módulos usam um único endpoint — o QG de NFCom já resolveu isso na v2.1, é candidato natural pra próxima leva de melhorias)
-- [ ] Confirmar com o time de infra os valores corretos dos 3 endpoints de Homologação adicionados na v2.1 do NFCom (Consulta SEFAZ, Cancelamento, Reenvio de WebHook) antes de configurá-los em `config.json` — não foram validados contra a infraestrutura real
-- [ ] Finalizar a versão web (Flask) do QG NFCom como alternativa ao app desktop
+**v3.0**
+- Integração do QG NFCom e do QG NFSe num app único, com hub, barra lateral, ambiente global e o Exportador de
+  Relatório.
+
+### QGs separados (legado, exes neste repositório)
+
+**NFCom v2.2 / NFSe v2.1**
+- Nenhuma URL interna no código-fonte: endpoints via `config.json` ou variáveis de ambiente.
+
+**NFCom v2.1**
+- Homologação na Consulta SEFAZ, Cancelamento e Reenvio de WebHook; MG/MS/MT em 30 notas a cada 2 min; ETA.
+
+**NFCom v2.0 / NFSe v2.0**
+- Central única de cada documento fiscal, com tema dark, paralelização e log em arquivo.
 
 ---
 
 <div align="center">
 
-Feito por **Bruno Siqueira**
+Feito por **Bruno Siqueira** ([@brunosiqp](https://github.com/brunosiqp)) com
+**Abel Fonseca** ([@Ab3lFonseca](https://github.com/Ab3lFonseca))
 
 </div>
